@@ -1,0 +1,170 @@
+diff --git a/pom.xml b/pom.xml
+new file mode 100644
+index 0000000..a7cf03c
+--- /dev/null
++++ b/pom.xml
+@@ -0,0 +1,43 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project xmlns="http://maven.apache.org/POM/4.0.0"
++         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
++    <modelVersion>4.0.0</modelVersion>
++
++    <parent>
++        <groupId>org.springframework.boot</groupId>
++        <artifactId>spring-boot-starter-parent</artifactId>
++        <version>3.2.3</version>
++        <relativePath/>
++    </parent>
++
++    <groupId>com.urlshortener</groupId>
++    <artifactId>url-shortener</artifactId>
++    <version>0.0.1-SNAPSHOT</version>
++    <packaging>jar</packaging>
++
++    <properties>
++        <java.version>17</java.version>
++    </properties>
++
++    <dependencies>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-web</artifactId>
++        </dependency>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-test</artifactId>
++            <scope>test</scope>
++        </dependency>
++    </dependencies>
++
++    <build>
++        <plugins>
++            <plugin>
++                <groupId>org.springframework.boot</groupId>
++                <artifactId>spring-boot-maven-plugin</artifactId>
++            </plugin>
++        </plugins>
++    </build>
++</project>
+diff --git a/src/main/java/com/urlshortener/UrlShortenerApplication.java b/src/main/java/com/urlshortener/UrlShortenerApplication.java
+new file mode 100644
+index 0000000..8e38495
+--- /dev/null
++++ b/src/main/java/com/urlshortener/UrlShortenerApplication.java
+@@ -0,0 +1,11 @@
++package com.urlshortener;
++
++import org.springframework.boot.SpringApplication;
++import org.springframework.boot.autoconfigure.SpringBootApplication;
++
++@SpringBootApplication
++public class UrlShortenerApplication {
++    public static void main(String[] args) {
++        SpringApplication.run(UrlShortenerApplication.class, args);
++    }
++}
+diff --git a/src/main/java/com/urlshortener/controller/HealthController.java b/src/main/java/com/urlshortener/controller/HealthController.java
+new file mode 100644
+index 0000000..da4d559
+--- /dev/null
++++ b/src/main/java/com/urlshortener/controller/HealthController.java
+@@ -0,0 +1,15 @@
++package com.urlshortener.controller;
++
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++import java.time.Instant;
++
++@RestController
++public class HealthController {
++
++    @GetMapping("/health")
++    public HealthResponse health() {
++        return new HealthResponse("ok", Instant.now());
++    }
++}
+diff --git a/src/main/java/com/urlshortener/controller/HealthResponse.java b/src/main/java/com/urlshortener/controller/HealthResponse.java
+new file mode 100644
+index 0000000..f738a57
+--- /dev/null
++++ b/src/main/java/com/urlshortener/controller/HealthResponse.java
+@@ -0,0 +1,5 @@
++package com.urlshortener.controller;
++
++import java.time.Instant;
++
++public record HealthResponse(String status, Instant timestamp) {}
+diff --git a/src/main/resources/application.properties b/src/main/resources/application.properties
+new file mode 100644
+index 0000000..d53fac3
+--- /dev/null
++++ b/src/main/resources/application.properties
+@@ -0,0 +1,2 @@
++spring.application.name=url-shortener
++spring.jackson.serialization.write-dates-as-timestamps=false
+diff --git a/src/test/java/com/urlshortener/controller/HealthControllerTest.java b/src/test/java/com/urlshortener/controller/HealthControllerTest.java
+new file mode 100644
+index 0000000..84f70e0
+--- /dev/null
++++ b/src/test/java/com/urlshortener/controller/HealthControllerTest.java
+@@ -0,0 +1,58 @@
++package com.urlshortener.controller;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.fasterxml.jackson.databind.SerializationFeature;
++import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
++import org.springframework.test.web.servlet.MockMvc;
++import org.springframework.test.web.servlet.setup.MockMvcBuilders;
++
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++class HealthControllerTest {
++
++    private MockMvc mockMvc;
++
++    @BeforeEach
++    void setUp() {
++        ObjectMapper mapper = new ObjectMapper()
++                .registerModule(new JavaTimeModule())
++                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
++
++        mockMvc = MockMvcBuilders
++                .standaloneSetup(new HealthController())
++                .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper))
++                .build();
++    }
++
++    @Test
++    void health_returns200() throws Exception {
++        mockMvc.perform(get("/health"))
++                .andExpect(status().isOk());
++    }
++
++    @Test
++    void health_returnsStatusOk() throws Exception {
++        mockMvc.perform(get("/health"))
++                .andExpect(content().contentType("application/json"))
++                .andExpect(jsonPath("$.status").value("ok"));
++    }
++
++    @Test
++    void health_returnsTimestampAsIso8601String() throws Exception {
++        mockMvc.perform(get("/health"))
++                .andExpect(jsonPath("$.timestamp").isString())
++                .andExpect(jsonPath("$.timestamp").isNotEmpty());
++    }
++
++    @Test
++    void health_responseHasExactlyTwoFields() throws Exception {
++        mockMvc.perform(get("/health"))
++                .andExpect(jsonPath("$.length()").value(2));
++    }
++}
