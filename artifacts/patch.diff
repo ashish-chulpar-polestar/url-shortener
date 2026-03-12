@@ -1,0 +1,972 @@
+diff --git a/pom.xml b/pom.xml
+new file mode 100644
+index 0000000..2b22b5a
+--- /dev/null
++++ b/pom.xml
+@@ -0,0 +1,79 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<project xmlns="http://maven.apache.org/POM/4.0.0"
++         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
++             https://maven.apache.org/xsd/maven-4.0.0.xsd">
++    <modelVersion>4.0.0</modelVersion>
++
++    <parent>
++        <groupId>org.springframework.boot</groupId>
++        <artifactId>spring-boot-starter-parent</artifactId>
++        <version>3.3.5</version>
++        <relativePath/>
++    </parent>
++
++    <groupId>com.example</groupId>
++    <artifactId>url-shortener</artifactId>
++    <version>0.0.1-SNAPSHOT</version>
++    <name>url-shortener</name>
++    <description>URL Shortener Service</description>
++
++    <properties>
++        <java.version>21</java.version>
++        <flyway.version>10.15.0</flyway.version>
++    </properties>
++
++    <dependencies>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-web</artifactId>
++        </dependency>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-data-jpa</artifactId>
++        </dependency>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-actuator</artifactId>
++        </dependency>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-validation</artifactId>
++        </dependency>
++        <dependency>
++            <groupId>org.postgresql</groupId>
++            <artifactId>postgresql</artifactId>
++            <scope>runtime</scope>
++        </dependency>
++        <dependency>
++            <groupId>org.flywaydb</groupId>
++            <artifactId>flyway-core</artifactId>
++            <version>${flyway.version}</version>
++        </dependency>
++        <dependency>
++            <groupId>org.flywaydb</groupId>
++            <artifactId>flyway-database-postgresql</artifactId>
++            <version>${flyway.version}</version>
++        </dependency>
++
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-test</artifactId>
++            <scope>test</scope>
++        </dependency>
++        <dependency>
++            <groupId>com.h2database</groupId>
++            <artifactId>h2</artifactId>
++            <scope>test</scope>
++        </dependency>
++    </dependencies>
++
++    <build>
++        <plugins>
++            <plugin>
++                <groupId>org.springframework.boot</groupId>
++                <artifactId>spring-boot-maven-plugin</artifactId>
++            </plugin>
++        </plugins>
++    </build>
++</project>
+diff --git a/src/main/java/com/example/urlshortener/UrlShortenerApplication.java b/src/main/java/com/example/urlshortener/UrlShortenerApplication.java
+new file mode 100644
+index 0000000..d4ad1c4
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/UrlShortenerApplication.java
+@@ -0,0 +1,14 @@
++package com.example.urlshortener;
++
++import org.springframework.boot.SpringApplication;
++import org.springframework.boot.autoconfigure.SpringBootApplication;
++import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
++
++@SpringBootApplication
++@ConfigurationPropertiesScan
++public class UrlShortenerApplication {
++
++    public static void main(String[] args) {
++        SpringApplication.run(UrlShortenerApplication.class, args);
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/config/AppProperties.java b/src/main/java/com/example/urlshortener/config/AppProperties.java
+new file mode 100644
+index 0000000..4074c97
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/config/AppProperties.java
+@@ -0,0 +1,21 @@
++package com.example.urlshortener.config;
++
++import jakarta.validation.constraints.NotBlank;
++import org.springframework.boot.context.properties.ConfigurationProperties;
++import org.springframework.validation.annotation.Validated;
++
++@ConfigurationProperties(prefix = "app")
++@Validated
++public class AppProperties {
++
++    @NotBlank
++    private String baseUrl;
++
++    public String getBaseUrl() {
++        return baseUrl;
++    }
++
++    public void setBaseUrl(String baseUrl) {
++        this.baseUrl = baseUrl;
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/config/ClockConfig.java b/src/main/java/com/example/urlshortener/config/ClockConfig.java
+new file mode 100644
+index 0000000..11354c4
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/config/ClockConfig.java
+@@ -0,0 +1,15 @@
++package com.example.urlshortener.config;
++
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++
++import java.time.Clock;
++
++@Configuration
++public class ClockConfig {
++
++    @Bean
++    public Clock clock() {
++        return Clock.systemUTC();
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/controller/UrlShortenerController.java b/src/main/java/com/example/urlshortener/controller/UrlShortenerController.java
+new file mode 100644
+index 0000000..5b88f77
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/controller/UrlShortenerController.java
+@@ -0,0 +1,38 @@
++package com.example.urlshortener.controller;
++
++import com.example.urlshortener.dto.ShortenRequest;
++import com.example.urlshortener.dto.ShortenResponse;
++import com.example.urlshortener.service.UrlShortenerService;
++import jakarta.validation.Valid;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RestController;
++
++import java.net.URI;
++
++@RestController
++public class UrlShortenerController {
++
++    private final UrlShortenerService service;
++
++    public UrlShortenerController(UrlShortenerService service) {
++        this.service = service;
++    }
++
++    @PostMapping("/shorten")
++    public ResponseEntity<ShortenResponse> shorten(@Valid @RequestBody ShortenRequest request) {
++        return ResponseEntity.ok(service.shorten(request));
++    }
++
++    @GetMapping("/{code}")
++    public ResponseEntity<Void> redirect(@PathVariable String code) {
++        String originalUrl = service.resolve(code);
++        return ResponseEntity.status(HttpStatus.FOUND)
++                .location(URI.create(originalUrl))
++                .build();
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/dto/ErrorResponse.java b/src/main/java/com/example/urlshortener/dto/ErrorResponse.java
+new file mode 100644
+index 0000000..c62d329
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/dto/ErrorResponse.java
+@@ -0,0 +1,14 @@
++package com.example.urlshortener.dto;
++
++public class ErrorResponse {
++
++    private final String error;
++
++    public ErrorResponse(String error) {
++        this.error = error;
++    }
++
++    public String getError() {
++        return error;
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/dto/ShortenRequest.java b/src/main/java/com/example/urlshortener/dto/ShortenRequest.java
+new file mode 100644
+index 0000000..43c7d8c
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/dto/ShortenRequest.java
+@@ -0,0 +1,21 @@
++package com.example.urlshortener.dto;
++
++import com.fasterxml.jackson.annotation.JsonProperty;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++
++public class ShortenRequest {
++
++    @NotBlank
++    @Pattern(regexp = "https?://.+", message = "must match a valid HTTP/HTTPS URL")
++    @JsonProperty("url")
++    private String url;
++
++    public String getUrl() {
++        return url;
++    }
++
++    public void setUrl(String url) {
++        this.url = url;
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/dto/ShortenResponse.java b/src/main/java/com/example/urlshortener/dto/ShortenResponse.java
+new file mode 100644
+index 0000000..cd33b11
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/dto/ShortenResponse.java
+@@ -0,0 +1,20 @@
++package com.example.urlshortener.dto;
++
++public class ShortenResponse {
++
++    private final String code;
++    private final String shortUrl;
++
++    public ShortenResponse(String code, String shortUrl) {
++        this.code = code;
++        this.shortUrl = shortUrl;
++    }
++
++    public String getCode() {
++        return code;
++    }
++
++    public String getShortUrl() {
++        return shortUrl;
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/entity/ShortUrl.java b/src/main/java/com/example/urlshortener/entity/ShortUrl.java
+new file mode 100644
+index 0000000..7bfda6b
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/entity/ShortUrl.java
+@@ -0,0 +1,77 @@
++package com.example.urlshortener.entity;
++
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.GeneratedValue;
++import jakarta.persistence.GenerationType;
++import jakarta.persistence.Id;
++import jakarta.persistence.Table;
++
++import java.time.OffsetDateTime;
++
++@Entity
++@Table(name = "short_urls")
++public class ShortUrl {
++
++    @Id
++    @GeneratedValue(strategy = GenerationType.IDENTITY)
++    private Long id;
++
++    @Column(nullable = false, unique = true, length = 6)
++    private String code;
++
++    @Column(name = "original_url", nullable = false, columnDefinition = "TEXT")
++    private String originalUrl;
++
++    @Column(name = "created_at", nullable = false)
++    private OffsetDateTime createdAt;
++
++    @Column(name = "expires_at", nullable = false)
++    private OffsetDateTime expiresAt;
++
++    public ShortUrl() {
++    }
++
++    public ShortUrl(String code, String originalUrl, OffsetDateTime createdAt, OffsetDateTime expiresAt) {
++        this.code = code;
++        this.originalUrl = originalUrl;
++        this.createdAt = createdAt;
++        this.expiresAt = expiresAt;
++    }
++
++    public Long getId() {
++        return id;
++    }
++
++    public String getCode() {
++        return code;
++    }
++
++    public void setCode(String code) {
++        this.code = code;
++    }
++
++    public String getOriginalUrl() {
++        return originalUrl;
++    }
++
++    public void setOriginalUrl(String originalUrl) {
++        this.originalUrl = originalUrl;
++    }
++
++    public OffsetDateTime getCreatedAt() {
++        return createdAt;
++    }
++
++    public void setCreatedAt(OffsetDateTime createdAt) {
++        this.createdAt = createdAt;
++    }
++
++    public OffsetDateTime getExpiresAt() {
++        return expiresAt;
++    }
++
++    public void setExpiresAt(OffsetDateTime expiresAt) {
++        this.expiresAt = expiresAt;
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/exception/CodeExpiredException.java b/src/main/java/com/example/urlshortener/exception/CodeExpiredException.java
+new file mode 100644
+index 0000000..4a764b0
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/exception/CodeExpiredException.java
+@@ -0,0 +1,8 @@
++package com.example.urlshortener.exception;
++
++public class CodeExpiredException extends RuntimeException {
++
++    public CodeExpiredException(String code) {
++        super("Short code has expired: " + code);
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/exception/CodeGenerationException.java b/src/main/java/com/example/urlshortener/exception/CodeGenerationException.java
+new file mode 100644
+index 0000000..05a7b40
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/exception/CodeGenerationException.java
+@@ -0,0 +1,8 @@
++package com.example.urlshortener.exception;
++
++public class CodeGenerationException extends RuntimeException {
++
++    public CodeGenerationException() {
++        super("Failed to generate a unique short code after maximum retry attempts");
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/exception/CodeNotFoundException.java b/src/main/java/com/example/urlshortener/exception/CodeNotFoundException.java
+new file mode 100644
+index 0000000..5cc278a
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/exception/CodeNotFoundException.java
+@@ -0,0 +1,8 @@
++package com.example.urlshortener.exception;
++
++public class CodeNotFoundException extends RuntimeException {
++
++    public CodeNotFoundException(String code) {
++        super("Short code not found: " + code);
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/exception/GlobalExceptionHandler.java b/src/main/java/com/example/urlshortener/exception/GlobalExceptionHandler.java
+new file mode 100644
+index 0000000..af21d2b
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/exception/GlobalExceptionHandler.java
+@@ -0,0 +1,56 @@
++package com.example.urlshortener.exception;
++
++import com.example.urlshortener.dto.ErrorResponse;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.dao.DataAccessException;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.MethodArgumentNotValidException;
++import org.springframework.web.bind.annotation.ExceptionHandler;
++import org.springframework.web.bind.annotation.RestControllerAdvice;
++
++@RestControllerAdvice
++public class GlobalExceptionHandler {
++
++    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
++
++    @ExceptionHandler(CodeNotFoundException.class)
++    public ResponseEntity<ErrorResponse> handleCodeNotFound(CodeNotFoundException ex) {
++        log.debug("Code not found: {}", ex.getMessage());
++        return ResponseEntity.status(HttpStatus.NOT_FOUND)
++                .body(new ErrorResponse(ex.getMessage()));
++    }
++
++    @ExceptionHandler(CodeExpiredException.class)
++    public ResponseEntity<ErrorResponse> handleCodeExpired(CodeExpiredException ex) {
++        log.debug("Code expired: {}", ex.getMessage());
++        return ResponseEntity.status(HttpStatus.GONE)
++                .body(new ErrorResponse(ex.getMessage()));
++    }
++
++    @ExceptionHandler(MethodArgumentNotValidException.class)
++    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
++        String message = ex.getBindingResult().getFieldErrors().stream()
++                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
++                .findFirst()
++                .orElse("Invalid request");
++        log.debug("Validation failure: {}", message);
++        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
++                .body(new ErrorResponse(message));
++    }
++
++    @ExceptionHandler(DataAccessException.class)
++    public ResponseEntity<ErrorResponse> handleDataAccess(DataAccessException ex) {
++        log.error("Database error: {}", ex.getMessage());
++        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
++                .body(new ErrorResponse("Service temporarily unavailable"));
++    }
++
++    @ExceptionHandler(Exception.class)
++    public ResponseEntity<ErrorResponse> handleGeneral(Exception ex) {
++        log.error("Unexpected error", ex);
++        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
++                .body(new ErrorResponse("Internal server error"));
++    }
++}
+diff --git a/src/main/java/com/example/urlshortener/repository/ShortUrlRepository.java b/src/main/java/com/example/urlshortener/repository/ShortUrlRepository.java
+new file mode 100644
+index 0000000..1ad0063
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/repository/ShortUrlRepository.java
+@@ -0,0 +1,11 @@
++package com.example.urlshortener.repository;
++
++import com.example.urlshortener.entity.ShortUrl;
++import org.springframework.data.jpa.repository.JpaRepository;
++
++import java.util.Optional;
++
++public interface ShortUrlRepository extends JpaRepository<ShortUrl, Long> {
++
++    Optional<ShortUrl> findByCode(String code);
++}
+diff --git a/src/main/java/com/example/urlshortener/service/UrlShortenerService.java b/src/main/java/com/example/urlshortener/service/UrlShortenerService.java
+new file mode 100644
+index 0000000..bc1fa5a
+--- /dev/null
++++ b/src/main/java/com/example/urlshortener/service/UrlShortenerService.java
+@@ -0,0 +1,83 @@
++package com.example.urlshortener.service;
++
++import com.example.urlshortener.config.AppProperties;
++import com.example.urlshortener.dto.ShortenRequest;
++import com.example.urlshortener.dto.ShortenResponse;
++import com.example.urlshortener.entity.ShortUrl;
++import com.example.urlshortener.exception.CodeExpiredException;
++import com.example.urlshortener.exception.CodeGenerationException;
++import com.example.urlshortener.exception.CodeNotFoundException;
++import com.example.urlshortener.repository.ShortUrlRepository;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.stereotype.Service;
++
++import java.security.SecureRandom;
++import java.time.Clock;
++import java.time.OffsetDateTime;
++
++@Service
++public class UrlShortenerService {
++
++    private static final Logger log = LoggerFactory.getLogger(UrlShortenerService.class);
++
++    private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
++    private static final int CODE_LENGTH = 6;
++    private static final int MAX_RETRIES = 5;
++    private static final String CODE_PATTERN = "[A-Za-z0-9]{6}";
++
++    private final ShortUrlRepository repository;
++    private final AppProperties appProperties;
++    private final Clock clock;
++    private final SecureRandom secureRandom = new SecureRandom();
++
++    public UrlShortenerService(ShortUrlRepository repository, AppProperties appProperties, Clock clock) {
++        this.repository = repository;
++        this.appProperties = appProperties;
++        this.clock = clock;
++    }
++
++    String generateCode() {
++        StringBuilder sb = new StringBuilder(CODE_LENGTH);
++        for (int i = 0; i < CODE_LENGTH; i++) {
++            sb.append(ALPHABET.charAt(secureRandom.nextInt(ALPHABET.length())));
++        }
++        return sb.toString();
++    }
++
++    public ShortenResponse shorten(ShortenRequest request) {
++        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
++            String code = generateCode();
++            OffsetDateTime now = OffsetDateTime.now(clock);
++            ShortUrl entity = new ShortUrl(code, request.getUrl(), now, now.plusDays(30));
++            try {
++                repository.save(entity);
++                log.info("Created short code {} for URL {}", code, request.getUrl());
++                return new ShortenResponse(code, appProperties.getBaseUrl() + "/" + code);
++            } catch (DataIntegrityViolationException e) {
++                log.warn("Code collision on attempt {}/{} for code {}", attempt + 1, MAX_RETRIES, code);
++            }
++        }
++        log.error("Exhausted {} retry attempts for code generation", MAX_RETRIES);
++        throw new CodeGenerationException();
++    }
++
++    public String resolve(String code) {
++        if (!code.matches(CODE_PATTERN)) {
++            log.debug("Rejecting invalid code format: {}", code);
++            throw new CodeNotFoundException(code);
++        }
++        ShortUrl entity = repository.findByCode(code)
++                .orElseThrow(() -> {
++                    log.debug("Code not found in DB: {}", code);
++                    return new CodeNotFoundException(code);
++                });
++        if (entity.getExpiresAt().isBefore(OffsetDateTime.now(clock))) {
++            log.debug("Code {} has expired at {}", code, entity.getExpiresAt());
++            throw new CodeExpiredException(code);
++        }
++        log.info("Resolving code {} to {}", code, entity.getOriginalUrl());
++        return entity.getOriginalUrl();
++    }
++}
+diff --git a/src/main/resources/application.yml b/src/main/resources/application.yml
+new file mode 100644
+index 0000000..4ba062b
+--- /dev/null
++++ b/src/main/resources/application.yml
+@@ -0,0 +1,32 @@
++spring:
++  datasource:
++    url: ${DB_URL:jdbc:postgresql://localhost:5432/urlshortener}
++    username: ${DB_USER:postgres}
++    password: ${DB_PASSWORD:postgres}
++    hikari:
++      connection-timeout: 3000
++      maximum-pool-size: 10
++      validation-timeout: 2000
++  jpa:
++    hibernate:
++      ddl-auto: validate
++    properties:
++      hibernate:
++        dialect: org.hibernate.dialect.PostgreSQLDialect
++        format_sql: false
++  flyway:
++    enabled: true
++    locations: classpath:db/migration
++
++app:
++  base-url: ${APP_BASE_URL:http://localhost:8080}
++
++management:
++  endpoints:
++    web:
++      exposure:
++        include: health,info
++
++logging:
++  pattern:
++    console: '{"timestamp":"%d","level":"%p","logger":"%c{1}","message":"%m"}%n'
+diff --git a/src/main/resources/db/migration/V1__create_short_urls.sql b/src/main/resources/db/migration/V1__create_short_urls.sql
+new file mode 100644
+index 0000000..a16bade
+--- /dev/null
++++ b/src/main/resources/db/migration/V1__create_short_urls.sql
+@@ -0,0 +1,11 @@
++CREATE TABLE short_urls (
++    id          BIGSERIAL                   PRIMARY KEY,
++    code        VARCHAR(6)                  NOT NULL,
++    original_url TEXT                       NOT NULL,
++    created_at  TIMESTAMP WITH TIME ZONE   NOT NULL,
++    expires_at  TIMESTAMP WITH TIME ZONE   NOT NULL,
++    CONSTRAINT uq_short_urls_code UNIQUE (code)
++);
++
++CREATE INDEX idx_short_urls_code    ON short_urls (code);
++CREATE INDEX idx_short_urls_expires ON short_urls (expires_at);
+diff --git a/src/test/java/com/example/urlshortener/controller/UrlShortenerControllerTest.java b/src/test/java/com/example/urlshortener/controller/UrlShortenerControllerTest.java
+new file mode 100644
+index 0000000..7dedb39
+--- /dev/null
++++ b/src/test/java/com/example/urlshortener/controller/UrlShortenerControllerTest.java
+@@ -0,0 +1,118 @@
++package com.example.urlshortener.controller;
++
++import com.example.urlshortener.dto.ShortenResponse;
++import com.example.urlshortener.exception.CodeExpiredException;
++import com.example.urlshortener.exception.CodeNotFoundException;
++import com.example.urlshortener.exception.GlobalExceptionHandler;
++import com.example.urlshortener.service.UrlShortenerService;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
++import org.springframework.boot.test.mock.mockito.MockBean;
++import org.springframework.context.annotation.Import;
++import org.springframework.dao.DataAccessResourceFailureException;
++import org.springframework.http.MediaType;
++import org.springframework.test.web.servlet.MockMvc;
++
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.Mockito.when;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++@WebMvcTest(UrlShortenerController.class)
++@Import(GlobalExceptionHandler.class)
++class UrlShortenerControllerTest {
++
++    @Autowired
++    private MockMvc mockMvc;
++
++    @MockBean
++    private UrlShortenerService service;
++
++    @Test
++    void postShorten_returns200_withValidUrl() throws Exception {
++        when(service.shorten(any())).thenReturn(new ShortenResponse("abc123", "http://localhost:8080/abc123"));
++
++        mockMvc.perform(post("/shorten")
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"url\":\"https://example.com/long-path\"}"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.code").value("abc123"))
++                .andExpect(jsonPath("$.shortUrl").value("http://localhost:8080/abc123"));
++    }
++
++    @Test
++    void postShorten_returns400_whenUrlMissing() throws Exception {
++        mockMvc.perform(post("/shorten")
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.error").exists());
++    }
++
++    @Test
++    void postShorten_returns400_whenUrlBlank() throws Exception {
++        mockMvc.perform(post("/shorten")
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"url\":\"\"}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.error").exists());
++    }
++
++    @Test
++    void postShorten_returns400_whenUrlNotHttpScheme() throws Exception {
++        mockMvc.perform(post("/shorten")
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"url\":\"ftp://example.com\"}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.error").exists());
++    }
++
++    @Test
++    void postShorten_returns400_whenUrlIsJavascriptScheme() throws Exception {
++        mockMvc.perform(post("/shorten")
++                        .contentType(MediaType.APPLICATION_JSON)
++                        .content("{\"url\":\"javascript:alert(1)\"}"))
++                .andExpect(status().isBadRequest())
++                .andExpect(jsonPath("$.error").exists());
++    }
++
++    @Test
++    void getCode_returns302_withLocationHeader() throws Exception {
++        when(service.resolve("abc123")).thenReturn("https://example.com/long-path");
++
++        mockMvc.perform(get("/abc123"))
++                .andExpect(status().isFound())
++                .andExpect(header().string("Location", "https://example.com/long-path"));
++    }
++
++    @Test
++    void getCode_returns404_whenNotFound() throws Exception {
++        when(service.resolve("abc123")).thenThrow(new CodeNotFoundException("abc123"));
++
++        mockMvc.perform(get("/abc123"))
++                .andExpect(status().isNotFound())
++                .andExpect(jsonPath("$.error").value("Short code not found: abc123"));
++    }
++
++    @Test
++    void getCode_returns410_whenExpired() throws Exception {
++        when(service.resolve("abc123")).thenThrow(new CodeExpiredException("abc123"));
++
++        mockMvc.perform(get("/abc123"))
++                .andExpect(status().isGone())
++                .andExpect(jsonPath("$.error").value("Short code has expired: abc123"));
++    }
++
++    @Test
++    void getCode_returns503_whenDbUnavailable() throws Exception {
++        when(service.resolve("abc123")).thenThrow(new DataAccessResourceFailureException("DB down"));
++
++        mockMvc.perform(get("/abc123"))
++                .andExpect(status().isServiceUnavailable())
++                .andExpect(jsonPath("$.error").value("Service temporarily unavailable"));
++    }
++}
+diff --git a/src/test/java/com/example/urlshortener/service/UrlShortenerServiceTest.java b/src/test/java/com/example/urlshortener/service/UrlShortenerServiceTest.java
+new file mode 100644
+index 0000000..7c3d912
+--- /dev/null
++++ b/src/test/java/com/example/urlshortener/service/UrlShortenerServiceTest.java
+@@ -0,0 +1,206 @@
++package com.example.urlshortener.service;
++
++import com.example.urlshortener.config.AppProperties;
++import com.example.urlshortener.dto.ShortenRequest;
++import com.example.urlshortener.dto.ShortenResponse;
++import com.example.urlshortener.entity.ShortUrl;
++import com.example.urlshortener.exception.CodeExpiredException;
++import com.example.urlshortener.exception.CodeGenerationException;
++import com.example.urlshortener.exception.CodeNotFoundException;
++import com.example.urlshortener.repository.ShortUrlRepository;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.dao.DataIntegrityViolationException;
++
++import java.time.Clock;
++import java.time.Instant;
++import java.time.OffsetDateTime;
++import java.time.ZoneOffset;
++import java.util.HashSet;
++import java.util.Optional;
++import java.util.Set;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.Mockito.mock;
++import static org.mockito.Mockito.never;
++import static org.mockito.Mockito.times;
++import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.when;
++
++class UrlShortenerServiceTest {
++
++    private static final String BASE_URL = "http://localhost:8080";
++    private static final Instant FIXED_INSTANT = Instant.parse("2026-01-01T00:00:00Z");
++
++    private ShortUrlRepository repository;
++    private AppProperties appProperties;
++    private Clock fixedClock;
++    private UrlShortenerService service;
++
++    @BeforeEach
++    void setUp() {
++        repository = mock(ShortUrlRepository.class);
++        appProperties = mock(AppProperties.class);
++        when(appProperties.getBaseUrl()).thenReturn(BASE_URL);
++        fixedClock = Clock.fixed(FIXED_INSTANT, ZoneOffset.UTC);
++        service = new UrlShortenerService(repository, appProperties, fixedClock);
++    }
++
++    @Test
++    void generateCode_returnsExactlySixChars() {
++        String code = service.generateCode();
++        assertThat(code).hasSize(6);
++    }
++
++    @Test
++    void generateCode_returnsAlphanumericOnly() {
++        String code = service.generateCode();
++        assertThat(code).matches("[A-Za-z0-9]{6}");
++    }
++
++    @Test
++    void generateCode_producesDistinctValues() {
++        Set<String> codes = new HashSet<>();
++        for (int i = 0; i < 1000; i++) {
++            codes.add(service.generateCode());
++        }
++        assertThat(codes.size()).isGreaterThanOrEqualTo(990);
++    }
++
++    @Test
++    void shorten_persistsEntityWithCorrectFields() {
++        ShortenRequest request = new ShortenRequest();
++        request.setUrl("https://example.com/long-path");
++
++        when(repository.save(any(ShortUrl.class))).thenAnswer(inv -> inv.getArgument(0));
++
++        ShortenResponse response = service.shorten(request);
++
++        assertThat(response.getCode()).hasSize(6);
++        assertThat(response.getCode()).matches("[A-Za-z0-9]{6}");
++    }
++
++    @Test
++    void shorten_returnsCorrectShortUrl() {
++        ShortenRequest request = new ShortenRequest();
++        request.setUrl("https://example.com");
++
++        when(repository.save(any(ShortUrl.class))).thenAnswer(inv -> inv.getArgument(0));
++
++        ShortenResponse response = service.shorten(request);
++
++        assertThat(response.getShortUrl()).startsWith(BASE_URL + "/");
++        assertThat(response.getShortUrl()).endsWith(response.getCode());
++    }
++
++    @Test
++    void shorten_expiresAt30DaysFromCreation() {
++        ShortenRequest request = new ShortenRequest();
++        request.setUrl("https://example.com");
++
++        OffsetDateTime[] capturedExpiresAt = new OffsetDateTime[1];
++        when(repository.save(any(ShortUrl.class))).thenAnswer(inv -> {
++            ShortUrl entity = inv.getArgument(0);
++            capturedExpiresAt[0] = entity.getExpiresAt();
++            return entity;
++        });
++
++        service.shorten(request);
++
++        OffsetDateTime expectedExpiry = OffsetDateTime.now(fixedClock).plusDays(30);
++        assertThat(capturedExpiresAt[0]).isEqualTo(expectedExpiry);
++    }
++
++    @Test
++    void shorten_retriesOnCollision() {
++        ShortenRequest request = new ShortenRequest();
++        request.setUrl("https://example.com");
++
++        when(repository.save(any(ShortUrl.class)))
++                .thenThrow(new DataIntegrityViolationException("duplicate"))
++                .thenThrow(new DataIntegrityViolationException("duplicate"))
++                .thenAnswer(inv -> inv.getArgument(0));
++
++        ShortenResponse response = service.shorten(request);
++
++        assertThat(response).isNotNull();
++        assertThat(response.getCode()).hasSize(6);
++        verify(repository, times(3)).save(any(ShortUrl.class));
++    }
++
++    @Test
++    void shorten_throwsAfterFiveCollisions() {
++        ShortenRequest request = new ShortenRequest();
++        request.setUrl("https://example.com");
++
++        when(repository.save(any(ShortUrl.class)))
++                .thenThrow(new DataIntegrityViolationException("duplicate"));
++
++        assertThatThrownBy(() -> service.shorten(request))
++                .isInstanceOf(CodeGenerationException.class);
++
++        verify(repository, times(5)).save(any(ShortUrl.class));
++    }
++
++    @Test
++    void resolve_returnsOriginalUrl_whenCodeValidAndNotExpired() {
++        OffsetDateTime expiresAt = OffsetDateTime.now(fixedClock).plusDays(1);
++        ShortUrl entity = new ShortUrl("abc123", "https://example.com", OffsetDateTime.now(fixedClock), expiresAt);
++
++        when(repository.findByCode("abc123")).thenReturn(Optional.of(entity));
++
++        String result = service.resolve("abc123");
++
++        assertThat(result).isEqualTo("https://example.com");
++    }
++
++    @Test
++    void resolve_throwsCodeNotFoundException_whenCodeNotInDB() {
++        when(repository.findByCode("abc123")).thenReturn(Optional.empty());
++
++        assertThatThrownBy(() -> service.resolve("abc123"))
++                .isInstanceOf(CodeNotFoundException.class)
++                .hasMessageContaining("abc123");
++    }
++
++    @Test
++    void resolve_throwsCodeExpiredException_whenExpired() {
++        OffsetDateTime expiresAt = OffsetDateTime.now(fixedClock).minusDays(1);
++        ShortUrl entity = new ShortUrl("abc123", "https://example.com", OffsetDateTime.now(fixedClock).minusDays(31), expiresAt);
++
++        when(repository.findByCode("abc123")).thenReturn(Optional.of(entity));
++
++        assertThatThrownBy(() -> service.resolve("abc123"))
++                .isInstanceOf(CodeExpiredException.class)
++                .hasMessageContaining("abc123");
++    }
++
++    @Test
++    void resolve_throwsCodeNotFoundException_forInvalidCodeFormat() {
++        assertThatThrownBy(() -> service.resolve("!@#$%^"))
++                .isInstanceOf(CodeNotFoundException.class);
++
++        verify(repository, never()).findByCode(any());
++    }
++
++    @Test
++    void resolve_throwsCodeNotFoundException_forShortCode() {
++        assertThatThrownBy(() -> service.resolve("abc"))
++                .isInstanceOf(CodeNotFoundException.class);
++
++        verify(repository, never()).findByCode(any());
++    }
++
++    @Test
++    void resolve_notExpired_exactBoundary() {
++        OffsetDateTime expiresAt = OffsetDateTime.now(fixedClock);
++        ShortUrl entity = new ShortUrl("abc123", "https://example.com", OffsetDateTime.now(fixedClock).minusDays(30), expiresAt);
++
++        when(repository.findByCode("abc123")).thenReturn(Optional.of(entity));
++
++        assertThatThrownBy(() -> service.resolve("abc123"))
++                .isInstanceOf(CodeExpiredException.class);
++    }
++}
+diff --git a/src/test/resources/application.yml b/src/test/resources/application.yml
+new file mode 100644
+index 0000000..6d9a921
+--- /dev/null
++++ b/src/test/resources/application.yml
+@@ -0,0 +1,12 @@
++spring:
++  datasource:
++    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
++    driver-class-name: org.h2.Driver
++  jpa:
++    hibernate:
++      ddl-auto: create-drop
++  flyway:
++    enabled: false
++
++app:
++  base-url: http://localhost:8080
