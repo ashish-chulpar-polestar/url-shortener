@@ -1,0 +1,7 @@
+app:
+  rate-limit:
+    requests-per-minute: 1000
+
+logging:
+  level:
+    com.polestar.mti: DEBUG
