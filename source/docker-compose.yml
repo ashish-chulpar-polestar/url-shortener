@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mti_scores
+      POSTGRES_USER: mti_user
+      POSTGRES_PASSWORD: mti_password
+    volumes:
+      - ./db/migrations/V1__create_mti_scores_history.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./db/migrations/V2__seed_test_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://mti_user:mti_password@postgres:5432/mti_scores
+      PORT: 3000
+      NODE_ENV: development
+    depends_on:
+      - postgres
