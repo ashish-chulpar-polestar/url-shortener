@@ -1,0 +1,4 @@
+com/example/mti/integration/MtiScoresIntegrationTest.class
+com/example/mti/controller/MtiScoresControllerTest.class
+com/example/mti/service/MtiScoresServiceTest.class
+com/example/mti/repository/MtiScoresRepositoryTest.class
